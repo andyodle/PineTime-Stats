@@ -451,65 +451,15 @@ class MainWindow(QMainWindow):
 
     def _on_restart_device(self) -> None:
         """Handle restart device request."""
-        paired = self._db.get_paired_device()
-        if not paired:
-            return
-
-        reply = QMessageBox.question(
+        QMessageBox.information(
             self,
             "Restart PineTime",
-            "This will send a restart command to the PineTime.\n\n"
-            "Note: If the restart characteristic is not supported,\n"
-            "please restart the PineTime manually.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            "To restart the PineTime:\n\n"
+            "1. Hold the side button for ~8 seconds\n"
+            "2. Wait until the PineTime logo turns blue\n"
+            "3. The watch will restart automatically\n\n"
+            "Note: InfiniTime does not support remote restart via BLE."
         )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self._status_bar.showMessage("Sending restart command...")
-            import asyncio
-            from PyQt6.QtCore import QThread
-
-            class RestartWorker(QThread):
-                finished = pyqtSignal(bool, str)
-
-                def __init__(self, ble_client, address):
-                    super().__init__()
-                    self._ble_client = ble_client
-                    self._address = address
-
-                def run(self):
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(
-                            self._ble_client.connect_by_address(self._address)
-                        )
-                        result = loop.run_until_complete(
-                            self._ble_client.reset_device()
-                        )
-                        loop.run_until_complete(self._ble_client.disconnect())
-                        if result:
-                            self.finished.emit(True, "Restart command sent")
-                        else:
-                            self.finished.emit(False, "Restart not supported - restart manually")
-                    except Exception as e:
-                        self.finished.emit(False, f"Error: {e}")
-                    finally:
-                        loop.close()
-
-            self._restart_worker = RestartWorker(self._ble_client, paired['address'])
-            self._restart_worker.finished.connect(self._on_restart_finished)
-            self._restart_worker.start()
-
-    @pyqtSlot(bool, str)
-    def _on_restart_finished(self, success: bool, message: str) -> None:
-        """Handle restart result."""
-        self._status_bar.showMessage(message, 5000)
-        self._status_message.show_message(message, is_error=not success)
-        if self._restart_worker:
-            self._restart_worker.deleteLater()
-            self._restart_worker = None
 
     def _show_pairing_dialog(self) -> None:
         """Show the device pairing dialog."""

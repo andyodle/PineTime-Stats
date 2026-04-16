@@ -267,30 +267,6 @@ class PineTimeBLEClient:
             logger.warning(f"Failed to clear steps: {e}")
             return False
 
-    async def reset_device(self) -> bool:
-        """
-        Request PineTime to reset/restart.
-
-        Note: This requires InfiniTime to support the reset characteristic.
-        If not supported, the user should restart manually via the watch.
-
-        Returns:
-            True if reset command sent, False otherwise.
-        """
-        if not self._client or not self._client.is_connected:
-            raise ConnectionError("Not connected to device")
-
-        RESET_CHAR = "00030003-78fc-48fe-8e23-433b3a1942d0"
-
-        try:
-            reset_bytes = struct.pack("<I", 1)
-            await self._client.write_gatt_char(RESET_CHAR, reset_bytes)
-            logger.info("Reset command sent to PineTime")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to send reset command: {e}")
-            return False
-
     async def _read_characteristic(self, uuid: str) -> Optional[bytearray]:
         """
         Read a characteristic value.
