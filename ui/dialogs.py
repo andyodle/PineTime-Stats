@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QColor
 
-from .styles import get_theme, Fonts
+from .styles import get_theme, Fonts, get_font
 
 logger = logging.getLogger(__name__)
 
@@ -572,7 +572,8 @@ class SettingsDialog(QDialog):
     def _create_group(self, title: str) -> QGroupBox:
         """Create a settings group box."""
         group = QGroupBox(title)
-        group.setFont(Fonts.LABEL_BOLD)
+        label_font = get_font(9, 600)
+        group.setFont(label_font)
         group.setStyleSheet(f"""
             QGroupBox {{
                 font-weight: bold;
