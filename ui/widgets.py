@@ -160,6 +160,7 @@ class ConnectionStatus(QFrame):
     """Connection status indicator widget."""
 
     connection_changed = pyqtSignal(bool)
+    restart_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -198,6 +199,27 @@ class ConnectionStatus(QFrame):
         self._battery_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self._battery_label)
 
+        self._restart_button = QPushButton("Restart")
+        self._restart_button.setFont(Fonts.LABEL)
+        self._restart_button.setFixedWidth(70)
+        self._restart_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._restart_button.setVisible(False)
+        self._restart_button.clicked.connect(self._on_restart_clicked)
+        self._restart_button.setStyleSheet(f"""
+            QPushButton {{
+                background: {self._theme['warning']};
+                color: {self._theme['background']};
+                border: none;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: #d97706;
+            }}
+        """)
+        layout.addWidget(self._restart_button)
+
         self._update_style()
 
     def _update_style(self) -> None:
@@ -226,9 +248,11 @@ class ConnectionStatus(QFrame):
             status_text = f"Connected to {device_name or 'PineTime'}"
             if firmware_version:
                 status_text += f" v{firmware_version}"
+            self._restart_button.setVisible(True)
         else:
             status_color = self._theme["error"]
             status_text = "Not Connected"
+            self._restart_button.setVisible(False)
 
         self._status_indicator.setStyleSheet(
             f"background: {status_color}; border-radius: 6px;"
@@ -247,6 +271,10 @@ class ConnectionStatus(QFrame):
     def is_connected(self) -> bool:
         """Check if connected."""
         return self._connected
+
+    def _on_restart_clicked(self) -> None:
+        """Handle restart button click."""
+        self.restart_requested.emit()
 
 
 class SyncButton(QPushButton):

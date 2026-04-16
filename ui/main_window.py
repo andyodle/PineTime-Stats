@@ -290,7 +290,13 @@ class MainWindow(QMainWindow):
         self._load_initial_data()
         self._update_sync_timer()
 
-        if not self._db.has_paired_device():
+        self._connection_status.restart_requested.connect(self._on_restart_device)
+
+        if self._db.has_paired_device():
+            paired = self._db.get_paired_device()
+            self._connection_status.set_connected(False, paired['name'])
+            QTimer.singleShot(500, self._auto_connect)
+        else:
             QTimer.singleShot(500, self._show_pairing_dialog)
 
     def _setup_ui(self) -> None:
@@ -435,6 +441,76 @@ class MainWindow(QMainWindow):
 
             self._last_sync_label.setText(text)
 
+    def _auto_connect(self) -> None:
+        """Auto-connect to paired device on startup."""
+        paired = self._db.get_paired_device()
+        if paired:
+            logger.info(f"Auto-connecting to {paired['name']}...")
+            self._status_bar.showMessage(f"Connecting to {paired['name']}...")
+            self._on_sync_clicked()
+
+    def _on_restart_device(self) -> None:
+        """Handle restart device request."""
+        paired = self._db.get_paired_device()
+        if not paired:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Restart PineTime",
+            "This will send a restart command to the PineTime.\n\n"
+            "Note: If the restart characteristic is not supported,\n"
+            "please restart the PineTime manually.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self._status_bar.showMessage("Sending restart command...")
+            import asyncio
+            from PyQt6.QtCore import QThread
+
+            class RestartWorker(QThread):
+                finished = pyqtSignal(bool, str)
+
+                def __init__(self, ble_client, address):
+                    super().__init__()
+                    self._ble_client = ble_client
+                    self._address = address
+
+                def run(self):
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(
+                            self._ble_client.connect_by_address(self._address)
+                        )
+                        result = loop.run_until_complete(
+                            self._ble_client.reset_device()
+                        )
+                        loop.run_until_complete(self._ble_client.disconnect())
+                        if result:
+                            self.finished.emit(True, "Restart command sent")
+                        else:
+                            self.finished.emit(False, "Restart not supported - restart manually")
+                    except Exception as e:
+                        self.finished.emit(False, f"Error: {e}")
+                    finally:
+                        loop.close()
+
+            self._restart_worker = RestartWorker(self._ble_client, paired['address'])
+            self._restart_worker.finished.connect(self._on_restart_finished)
+            self._restart_worker.start()
+
+    @pyqtSlot(bool, str)
+    def _on_restart_finished(self, success: bool, message: str) -> None:
+        """Handle restart result."""
+        self._status_bar.showMessage(message, 5000)
+        self._status_message.show_message(message, is_error=not success)
+        if self._restart_worker:
+            self._restart_worker.deleteLater()
+            self._restart_worker = None
+
     def _show_pairing_dialog(self) -> None:
         """Show the device pairing dialog."""
         if self._sync_button.is_syncing():
@@ -457,7 +533,7 @@ class MainWindow(QMainWindow):
                     f"Paired with {name}", is_error=False, duration_ms=3000
                 )
 
-                QTimer.singleShot(500, self._on_sync_clicked)
+                QTimer.singleShot(500, self._auto_connect)
 
     def _on_unpair_device(self) -> None:
         """Handle unpair device action."""
