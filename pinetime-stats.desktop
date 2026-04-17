@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=PineTime Stats
+Comment=PineTime Step Tracking Dashboard
+Comment[de]=PineTime Schrittzähler Dashboard
+Comment[fr]=Tableau de bord PineTime
+Exec=pinetime-stats
+Icon=pinetime-stats
+Terminal=false
+Type=Application
+Categories=Utility;Health;Bluetooth;
+Keywords=steps;heartrate;fitness;bluetooth;pinetime;watch;
+StartupNotify=true
