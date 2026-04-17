@@ -388,6 +388,8 @@ class SettingsDialog(QDialog):
             'heart_rate_enabled': self._db.get_setting('heart_rate_enabled') != 'false',
             'weather_update_enabled': self._db.get_setting('weather_update_enabled') == 'true',
             'weather_update_interval': int(self._db.get_setting('weather_update_interval') or '60'),
+            'time_format': self._db.get_setting('time_format') or '24h',
+            'sync_time_enabled': self._db.get_setting('sync_time_enabled') != 'false',
         }
 
     def _setup_ui(self) -> None:
@@ -428,6 +430,62 @@ class SettingsDialog(QDialog):
 
         sync_group.layout().addLayout(sync_layout)
         scroll_layout.addWidget(sync_group)
+
+        display_group = self._create_group("Display Settings")
+        display_layout = QVBoxLayout()
+
+        time_format_layout = QHBoxLayout()
+        time_format_label = QLabel("Time format:")
+        time_format_label.setFont(Fonts.LABEL)
+        time_format_label.setStyleSheet(f"color: {self._theme['text_secondary']};")
+        time_format_layout.addWidget(time_format_label)
+
+        from PyQt6.QtWidgets import QComboBox
+        self._time_format_combo = QComboBox()
+        self._time_format_combo.setFont(Fonts.BODY)
+        self._time_format_combo.addItems(["24-hour", "12-hour"])
+        current_format = self._settings.get('time_format', '24h')
+        self._time_format_combo.setCurrentText("12-hour" if current_format == '12h' else "24-hour")
+        self._time_format_combo.setStyleSheet(f"""
+            QComboBox {{
+                background: {self._theme['surface']};
+                border: 1px solid {self._theme['border']};
+                border-radius: 4px;
+                color: {self._theme['text_primary']};
+                padding: 4px 8px;
+                min-width: 100px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 6px solid {self._theme['text_secondary']};
+                margin-right: 8px;
+            }}
+        """)
+        self._time_format_combo.currentTextChanged.connect(self._on_time_format_changed)
+        time_format_layout.addWidget(self._time_format_combo)
+        time_format_layout.addStretch()
+        display_layout.addLayout(time_format_layout)
+
+        sync_time_checkbox_layout = QHBoxLayout()
+        self._sync_time_cb = self._create_checkbox(
+            "Sync time on connect",
+            "Automatically set time when connecting to PineTime"
+        )
+        self._sync_time_cb.setChecked(self._settings.get('sync_time_enabled', True))
+        self._sync_time_cb.stateChanged.connect(
+            lambda s: self._on_setting_changed('sync_time_enabled', s == Qt.CheckState.Checked.value)
+        )
+        sync_time_checkbox_layout.addWidget(self._sync_time_cb)
+        display_layout.addLayout(sync_time_checkbox_layout)
+
+        display_group.layout().addLayout(display_layout)
+        scroll_layout.addWidget(display_group)
 
         weather_group = self._create_group("Weather Settings")
         weather_layout = QVBoxLayout()
@@ -470,37 +528,6 @@ class SettingsDialog(QDialog):
 
         weather_group.layout().addLayout(weather_layout)
         scroll_layout.addWidget(weather_group)
-
-        storage_group = self._create_group("PineTime Storage")
-        storage_layout = QVBoxLayout()
-
-        self._storage_label = QLabel("Click 'Refresh' to fetch storage info")
-        self._storage_label.setFont(Fonts.BODY)
-        self._storage_label.setStyleSheet(f"color: {self._theme['text_secondary']};")
-        self._storage_label.setWordWrap(True)
-        storage_layout.addWidget(self._storage_label)
-
-        refresh_btn = QPushButton("Refresh Storage Info")
-        refresh_btn.setFont(Fonts.BODY_BOLD)
-        refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        refresh_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {self._theme['primary']};
-                color: {self._theme['background']};
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background: {self._theme['primary_variant']};
-            }}
-        """)
-        refresh_btn.clicked.connect(self._refresh_storage_info)
-        storage_layout.addWidget(refresh_btn)
-
-        storage_group.layout().addLayout(storage_layout)
-        scroll_layout.addWidget(storage_group)
 
         data_group = self._create_group("Data Management")
         data_layout = QVBoxLayout()
@@ -550,6 +577,31 @@ class SettingsDialog(QDialog):
         layout.addWidget(scroll_widget, stretch=1)
 
         button_layout = QHBoxLayout()
+
+        self._btn_save_to_watch = QPushButton("Save Settings to Watch")
+        self._btn_save_to_watch.setFont(Fonts.BODY_BOLD)
+        self._btn_save_to_watch.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_save_to_watch.setStyleSheet(f"""
+            QPushButton {{
+                background: {self._theme['success']};
+                color: {self._theme['background']};
+                border: none;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: #059669;
+            }}
+        """)
+        self._btn_save_to_watch.clicked.connect(self._save_settings_to_watch)
+        button_layout.addWidget(self._btn_save_to_watch)
+
+        self._save_status_label = QLabel("")
+        self._save_status_label.setFont(Fonts.LABEL)
+        self._save_status_label.setStyleSheet(f"color: {self._theme['text_muted']};")
+        button_layout.addWidget(self._save_status_label)
+
         button_layout.addStretch()
 
         close_btn = QPushButton("Close")
@@ -627,52 +679,87 @@ class SettingsDialog(QDialog):
         self._db.set_setting(key, str(value).lower() if isinstance(value, bool) else str(value))
         self.settings_changed.emit(self._settings)
 
-    def _refresh_storage_info(self) -> None:
-        """Fetch storage info from PineTime."""
-        from bleak import BleakClient
+    def _on_time_format_changed(self, text: str) -> None:
+        """Handle time format change."""
+        value = '12h' if text == '12-hour' else '24h'
+        self._settings['time_format'] = value
+        self._db.set_setting('time_format', value)
+        self.settings_changed.emit(self._settings)
 
-        self._storage_label.setText("Connecting to PineTime...")
+    def _save_settings_to_watch(self) -> None:
+        """Save settings to PineTime via BLE FS."""
+        from bleak import BleakClient
+        import struct
+        import uuid
+
+        self._save_status_label.setText("Connecting to PineTime...")
+        self._save_status_label.setStyleSheet(f"color: {self._theme['text_secondary']};")
         QApplication.processEvents()
 
-        async def fetch_storage():
+        BLE_FS_SERVICE_UUID = uuid.UUID("0000febb-0000-1000-8000-00805f9b34fb")
+        BLE_FS_TRANSFER_UUID = uuid.UUID("adaf0200-4669-6c65-5472-616e73666572")
+
+        async def save_settings():
             try:
                 paired = self._db.get_paired_device()
                 if not paired:
-                    return "No device paired"
+                    return "No device paired. Please pair a device first."
 
-                async with BleakClient(paired['address'], timeout=10) as client:
-                    await client.connect()
+                client = BleakClient(paired['address'], timeout=10)
+                await client.connect()
 
-                    storage_text = "=== PineTime Memory ===\n\n"
-                    storage_text += "Internal RAM: 64 KB\n"
-                    storage_text += "Internal Flash: 512 KB (Firmware)\n"
-                    storage_text += "External SPI Flash: 4 MB (LittleFS)\n\n"
+                services = await client.get_services()
+                has_ble_fs = False
+                for service in services:
+                    if str(service.uuid).lower() == "0000febb-0000-1000-8000-00805f9b34fb":
+                        has_ble_fs = True
+                        break
 
-                    try:
-                        battery = await client.read_gatt_char('00002a19-0000-1000-8000-00805f9b34fb')
-                        storage_text += f"Battery Level: {battery[0]}%\n"
-                    except:
-                        pass
-
-                    try:
-                        firmware = await client.read_gatt_char('00002a26-0000-1000-8000-00805f9b34fb')
-                        fw_version = bytes(firmware).decode('utf-8').strip('\x00')
-                        storage_text += f"Firmware: {fw_version}\n"
-                    except:
-                        pass
-
-                    storage_text += "\nNote: BLE FS does not expose\nfree space. Check on watch."
-
+                if not has_ble_fs:
                     await client.disconnect()
-                    return storage_text
+                    time_format = self._settings.get('time_format', '24h')
+                    sync_time = self._settings.get('sync_time_enabled', True)
+                    return f"BLE FS not available. Please set manually on watch:\nTime format: {time_format}\nSync time: {'On' if sync_time else 'Off'}"
+
+                time_format = self._settings.get('time_format', '24h')
+                sync_time_enabled = 1 if self._settings.get('sync_time_enabled', True) else 0
+
+                settings_json = f'{{"settings": {{"timeFormat": {1 if time_format == "12h" else 0}, "syncTime": {sync_time_enabled}}}}}'
+                settings_bytes = settings_json.encode('utf-8')
+
+                file_path = "/settings.json"
+                path_len = len(file_path)
+
+                header = bytearray()
+                header.append(0x20)
+                header.append(0x00)
+                header.extend(struct.pack('<H', path_len))
+                header.extend(struct.pack('<I', 0))
+                header.extend(struct.pack('<Q', 0))
+                header.extend(struct.pack('<I', len(settings_bytes)))
+
+                full_header = header + file_path.encode('utf-8')
+                await client.write_gatt_char(BLE_FS_TRANSFER_UUID, full_header, response=True)
+
+                await client.write_gatt_char(BLE_FS_TRANSFER_UUID, settings_bytes, response=True)
+
+                await client.disconnect()
+                sync_on = "On" if self._settings.get('sync_time_enabled', True) else "Off"
+                return f"Settings saved to PineTime!\nTime format: {time_format}\nSync time: {sync_on}"
 
             except Exception as e:
-                return f"Error: {str(e)}"
+                logger.error(f"Failed to save settings: {e}")
+                time_format = self._settings.get('time_format', '24h')
+                sync_on = "On" if self._settings.get('sync_time_enabled', True) else "Off"
+                return f"Could not save to watch.\nPlease set manually:\nTime format: {time_format}\nSync time: {sync_on}"
 
         async def run_async():
-            result = await fetch_storage()
-            self._storage_label.setText(result)
-            self._storage_label.setStyleSheet(f"color: {self._theme['text_secondary']};")
+            result = await save_settings()
+            self._save_status_label.setText(result)
+            if "Error" in result or "Could not" in result:
+                self._save_status_label.setStyleSheet(f"color: {self._theme['warning']};")
+            else:
+                self._save_status_label.setStyleSheet(f"color: {self._theme['success']};")
 
         import asyncio
         loop = asyncio.new_event_loop()
