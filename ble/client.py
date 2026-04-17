@@ -23,6 +23,7 @@ from .constants import (
     MOTION_SERVICE,
     HEART_RATE_SERVICE,
     BATTERY_SERVICE,
+    CURRENT_TIME_CHAR,
     CONNECTION_TIMEOUT,
     SCAN_TIMEOUT,
 )
@@ -351,6 +352,64 @@ class PineTimeBLEClient:
         except UnicodeDecodeError as e:
             logger.error(f"Failed to decode firmware version: {e}")
             return None
+
+    async def set_current_time(self, dt: Optional["datetime"] = None) -> bool:
+        """
+        Set current time on PineTime via BLE Current Time Service.
+
+        According to InfiniTime BLE documentation, the Current Time characteristic
+        accepts the following format (little-endian):
+        - Year (uint16)
+        - Month (uint8, 1-12)
+        - Day (uint8, 1-31)
+        - Hour (uint8, 0-23)
+        - Minute (uint8, 0-59)
+        - Second (uint8, 0-59)
+        - Weekday (uint8, 1=Monday, 7=Sunday)
+        - Fractions256 (uint8)
+        - AdjustReason (uint8)
+
+        Args:
+            dt: Datetime to set. If None, uses current system time.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        from datetime import datetime as dt_class
+
+        if dt is None:
+            dt = dt_class.now()
+
+        weekday = dt.isoweekday()
+        adjust_reason = 0
+
+        time_data = struct.pack(
+            "<HBBBBB",
+            dt.year,
+            dt.month,
+            dt.day,
+            dt.hour,
+            dt.minute,
+            dt.second
+        )
+        time_data += struct.pack(
+            "BB",
+            weekday,
+            0
+        )
+        time_data += struct.pack("B", adjust_reason)
+
+        try:
+            await self._client.write_gatt_char(
+                CURRENT_TIME_CHAR,
+                time_data,
+                response=False
+            )
+            logger.info(f"Time set successfully: {dt.isoformat()}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to set time: {e}")
+            return False
 
     async def get_all_data(self) -> PineTimeData:
         """
