@@ -35,14 +35,12 @@ class BLESyncWorker(QThread):
     data_fetched = pyqtSignal(int, int, int, str)
 
     def __init__(self, ble_client, parent=None, paired_address: Optional[str] = None,
-                 heart_rate_enabled: bool = True, clear_steps: bool = True,
-                 sync_time_enabled: bool = True):
+                 heart_rate_enabled: bool = True, clear_steps: bool = True):
         super().__init__(parent)
         self._ble_client = ble_client
         self._paired_address = paired_address
         self._heart_rate_enabled = heart_rate_enabled
         self._clear_steps = clear_steps
-        self._sync_time_enabled = sync_time_enabled
         self._loop = None
         self._stop_event = False
 
@@ -71,16 +69,24 @@ class BLESyncWorker(QThread):
                     self.finished.emit(False, f"Device not found: {e}")
                     return
 
-            if self._stop_event:
-                return
+                if self._stop_event:
+                    return
 
-            if self._sync_time_enabled:
-                self.progress.emit("Syncing time to PineTime...")
-                time_synced = self._loop.run_until_complete(
-                    self._ble_client.set_current_time()
-                )
-                if time_synced:
-                    self.progress.emit("Time synced to PineTime")
+                self.progress.emit("Connecting...")
+                try:
+                    self._loop.run_until_complete(
+                        self._ble_client.connect(device)
+                    )
+                except Exception as e:
+                    self.finished.emit(False, f"Connection failed: {e}")
+                    return
+
+            if self._stop_event:
+                try:
+                    self._loop.run_until_complete(self._ble_client.disconnect())
+                except:
+                    pass
+                return
 
             self.progress.emit("Reading data...")
             try:
@@ -514,7 +520,6 @@ class MainWindow(QMainWindow):
 
         heart_rate_enabled = self._db.get_setting('heart_rate_enabled') != 'false'
         clear_steps = self._db.get_setting('clear_steps_after_sync') != 'false'
-        sync_time_enabled = self._db.get_setting('sync_time_enabled') != 'false'
 
         self._status_bar.showMessage("Starting sync...")
         self._sync_button.set_syncing(True)
@@ -523,8 +528,7 @@ class MainWindow(QMainWindow):
             self._ble_client, self,
             paired_address=paired['address'],
             heart_rate_enabled=heart_rate_enabled,
-            clear_steps=clear_steps,
-            sync_time_enabled=sync_time_enabled
+            clear_steps=clear_steps
         )
         self._sync_worker.progress.connect(self._on_sync_progress)
         self._sync_worker.data_fetched.connect(self._on_data_fetched)
@@ -623,5 +627,15 @@ class MainWindow(QMainWindow):
             if self._sync_worker.isRunning():
                 self._sync_worker.wait(5000)
             self._sync_worker = None
+
+        if self._ble_client:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                if self._ble_client._client and self._ble_client._client.is_connected:
+                    loop.run_until_complete(self._ble_client.disconnect())
+                loop.close()
+            except Exception as e:
+                logger.warning(f"Error disconnecting on close: {e}")
 
         event.accept()

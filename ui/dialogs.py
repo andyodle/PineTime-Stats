@@ -2,7 +2,6 @@
 Device selection dialog for pairing with PineTime.
 """
 
-import asyncio
 import logging
 from typing import Optional, List
 
@@ -12,46 +11,13 @@ from PyQt6.QtWidgets import (
     QProgressBar, QDialogButtonBox, QMessageBox,
     QLineEdit, QCompleter, QApplication, QWidget, QGroupBox,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QColor
 
+from ble.pine_time import DeviceScanWorker, PineTimeSettings
 from .styles import get_theme, Fonts, get_font
 
 logger = logging.getLogger(__name__)
-
-
-class DeviceScanWorker(QThread):
-    """Background worker for scanning BLE devices."""
-
-    devices_found = pyqtSignal(list)
-    scan_error = pyqtSignal(str)
-    scan_complete = pyqtSignal()
-
-    def __init__(self, ble_client, parent=None):
-        super().__init__(parent)
-        self._ble_client = ble_client
-        self._loop = None
-
-    def run(self) -> None:
-        """Execute scan in async loop."""
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-
-        try:
-            logger.info("Starting device scan...")
-            devices = self._loop.run_until_complete(
-                self._ble_client.scan_all_devices(timeout=10.0)
-            )
-            logger.info(f"Scan found {len(devices)} devices")
-            self.devices_found.emit(devices)
-
-        except Exception as e:
-            logger.error(f"Scan error: {e}")
-            self.scan_error.emit(str(e))
-
-        finally:
-            self._loop.close()
-            self.scan_complete.emit()
 
 
 class DeviceSelectionDialog(QDialog):
@@ -688,84 +654,26 @@ class SettingsDialog(QDialog):
 
     def _save_settings_to_watch(self) -> None:
         """Save settings to PineTime via BLE FS."""
-        from bleak import BleakClient
-        import struct
-        import uuid
-
         self._save_status_label.setText("Connecting to PineTime...")
         self._save_status_label.setStyleSheet(f"color: {self._theme['text_secondary']};")
         QApplication.processEvents()
 
-        BLE_FS_SERVICE_UUID = uuid.UUID("0000febb-0000-1000-8000-00805f9b34fb")
-        BLE_FS_TRANSFER_UUID = uuid.UUID("adaf0200-4669-6c65-5472-616e73666572")
+        paired = self._db.get_paired_device()
+        if not paired:
+            self._save_status_label.setText("No device paired. Please pair a device first.")
+            self._save_status_label.setStyleSheet(f"color: {self._theme['warning']};")
+            return
 
-        async def save_settings():
-            try:
-                paired = self._db.get_paired_device()
-                if not paired:
-                    return "No device paired. Please pair a device first."
+        settings_handler = PineTimeSettings(self._ble_client)
+        success, message = settings_handler.save_settings_to_watch(
+            paired['address'], self._settings
+        )
 
-                client = BleakClient(paired['address'], timeout=10)
-                await client.connect()
-
-                services = await client.get_services()
-                has_ble_fs = False
-                for service in services:
-                    if str(service.uuid).lower() == "0000febb-0000-1000-8000-00805f9b34fb":
-                        has_ble_fs = True
-                        break
-
-                if not has_ble_fs:
-                    await client.disconnect()
-                    time_format = self._settings.get('time_format', '24h')
-                    sync_time = self._settings.get('sync_time_enabled', True)
-                    return f"BLE FS not available. Please set manually on watch:\nTime format: {time_format}\nSync time: {'On' if sync_time else 'Off'}"
-
-                time_format = self._settings.get('time_format', '24h')
-                sync_time_enabled = 1 if self._settings.get('sync_time_enabled', True) else 0
-
-                settings_json = f'{{"settings": {{"timeFormat": {1 if time_format == "12h" else 0}, "syncTime": {sync_time_enabled}}}}}'
-                settings_bytes = settings_json.encode('utf-8')
-
-                file_path = "/settings.json"
-                path_len = len(file_path)
-
-                header = bytearray()
-                header.append(0x20)
-                header.append(0x00)
-                header.extend(struct.pack('<H', path_len))
-                header.extend(struct.pack('<I', 0))
-                header.extend(struct.pack('<Q', 0))
-                header.extend(struct.pack('<I', len(settings_bytes)))
-
-                full_header = header + file_path.encode('utf-8')
-                await client.write_gatt_char(BLE_FS_TRANSFER_UUID, full_header, response=True)
-
-                await client.write_gatt_char(BLE_FS_TRANSFER_UUID, settings_bytes, response=True)
-
-                await client.disconnect()
-                sync_on = "On" if self._settings.get('sync_time_enabled', True) else "Off"
-                return f"Settings saved to PineTime!\nTime format: {time_format}\nSync time: {sync_on}"
-
-            except Exception as e:
-                logger.error(f"Failed to save settings: {e}")
-                time_format = self._settings.get('time_format', '24h')
-                sync_on = "On" if self._settings.get('sync_time_enabled', True) else "Off"
-                return f"Could not save to watch.\nPlease set manually:\nTime format: {time_format}\nSync time: {sync_on}"
-
-        async def run_async():
-            result = await save_settings()
-            self._save_status_label.setText(result)
-            if "Error" in result or "Could not" in result:
-                self._save_status_label.setStyleSheet(f"color: {self._theme['warning']};")
-            else:
-                self._save_status_label.setStyleSheet(f"color: {self._theme['success']};")
-
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(run_async())
-        loop.close()
+        self._save_status_label.setText(message)
+        if success:
+            self._save_status_label.setStyleSheet(f"color: {self._theme['success']};")
+        else:
+            self._save_status_label.setStyleSheet(f"color: {self._theme['warning']};")
 
     def _clear_sync_history(self) -> None:
         """Clear sync history."""
