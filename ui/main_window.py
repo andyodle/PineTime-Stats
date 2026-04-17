@@ -10,7 +10,7 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QFrame, QStatusBar,
-    QMessageBox, QDialog,
+    QMessageBox, QDialog, QComboBox,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread
 from PyQt6.QtGui import QAction, QColor
@@ -157,12 +157,17 @@ class BLESyncWorker(QThread):
         self._stop_event = True
 
 
+from PyQt6.QtCore import pyqtSignal
+
 class ChartWidget(QWidget):
     """Chart widget using pyqtgraph for step and heart rate history."""
+
+    filter_changed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._theme = get_theme()
+        self._current_filter = "7d"
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -171,10 +176,40 @@ class ChartWidget(QWidget):
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(8)
 
-        title_label = QLabel("History (Last 7 Days)")
-        title_label.setFont(Fonts.HEADING)
-        title_label.setStyleSheet(f"color: {self._theme['text_primary']};")
-        layout.addWidget(title_label)
+        header_layout = QHBoxLayout()
+
+        self._title_label = QLabel("History")
+        self._title_label.setFont(Fonts.HEADING)
+        self._title_label.setStyleSheet(f"color: {self._theme['text_primary']};")
+        header_layout.addWidget(self._title_label)
+
+        header_layout.addStretch()
+
+        self._filter_combo = QComboBox()
+        self._filter_combo.addItems(["Day", "7 Days", "Month", "Year", "All"])
+        self._filter_combo.setCurrentText("7 Days")
+        self._filter_combo.setStyleSheet(f"""
+            QComboBox {{
+                color: {self._theme['text_secondary']};
+                background-color: {self._theme['surface']};
+                border: 1px solid {self._theme['border']};
+                border-radius: 4px;
+                padding: 4px 8px;
+                min-width: 80px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
+            QComboBox QAbstractItemView {{
+                color: {self._theme['text_primary']};
+                background-color: {self._theme['surface']};
+                selection-background-color: {self._theme['primary']};
+            }}
+        """)
+        self._filter_combo.currentTextChanged.connect(self._on_filter_changed)
+        header_layout.addWidget(self._filter_combo)
+
+        layout.addLayout(header_layout)
 
         self._plot_widget = pg.PlotWidget()
         self._plot_widget.setBackground(QColor(self._theme["surface"]))
@@ -214,6 +249,23 @@ class ChartWidget(QWidget):
             f"color: {self._theme['text_muted']};"
         )
         self._no_data_label.hide()
+
+    def _on_filter_changed(self, text: str) -> None:
+        """Handle filter dropdown change."""
+        filter_map = {
+            "Day": "1d",
+            "7 Days": "7d",
+            "Month": "30d",
+            "Year": "365d",
+            "All": "all",
+        }
+        self._current_filter = filter_map.get(text, "7d")
+        self._title_label.setText(f"History ({text})")
+        self.filter_changed.emit(self._current_filter)
+
+    def get_filter(self) -> str:
+        """Get current filter."""
+        return self._current_filter
 
     def update_data(self, dates: list, steps: list, heart_rates: list) -> None:
         """
@@ -291,6 +343,7 @@ class MainWindow(QMainWindow):
         self._update_sync_timer()
 
         self._connection_status.restart_requested.connect(self._on_restart_device)
+        self._chart_widget.filter_changed.connect(self._on_chart_filter_changed)
 
         if self._db.has_paired_device():
             paired = self._db.get_paired_device()
@@ -400,15 +453,31 @@ class MainWindow(QMainWindow):
 
         self._update_chart()
 
-    def _update_chart(self) -> None:
+    def _update_chart(self, filter_value: Optional[str] = None) -> None:
         """Update the history chart."""
-        stats = self._db.get_daily_stats(days=7)
+        if filter_value is None:
+            filter_value = self._chart_widget.get_filter()
+
+        days_map = {
+            "1d": 1,
+            "7d": 7,
+            "30d": 30,
+            "365d": 365,
+            "all": 3650,
+        }
+        days = days_map.get(filter_value, 7)
+
+        stats = self._db.get_daily_stats(days=days)
         if stats:
             dates = [s.date for s in reversed(stats)]
             steps = [s.steps for s in reversed(stats)]
             hr_avg = [int(s.heart_rate_avg) if s.heart_rate_avg > 0 else 0
                      for s in reversed(stats)]
             self._chart_widget.update_data(dates, steps, hr_avg)
+
+    def _on_chart_filter_changed(self, filter_value: str) -> None:
+        """Handle chart filter change."""
+        self._update_chart(filter_value)
 
     def _update_sync_timer(self) -> None:
         """Update last sync time display."""
