@@ -285,14 +285,14 @@ class ChartWidget(QWidget):
         logger.debug(f"ChartWidget.update_data: dates={dates}, steps={steps}, heart_rates={heart_rates}")
         if not dates:
             self._no_data_label.show()
-            self._steps_bar.setData([], [])
+            self._steps_bar.setOpts(x=[], height=[])
             self._hr_line.setData([], [])
             return
 
         self._no_data_label.hide()
 
         x_values = list(range(len(dates)))
-        self._steps_bar.setData(x_values, steps)
+        self._steps_bar.setOpts(x=x_values, height=steps)
 
         hr_normalized = []
         max_steps = max(steps) if steps else 1
