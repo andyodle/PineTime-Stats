@@ -187,7 +187,7 @@ class ChartWidget(QWidget):
 
         self._filter_combo = QComboBox()
         self._filter_combo.addItems(["Day", "7 Days", "Month", "Year", "All"])
-        self._filter_combo.setCurrentText("7 Days")
+        self._filter_combo.setCurrentText("Day")
         self._filter_combo.setStyleSheet(f"""
             QComboBox {{
                 color: {self._theme['text_secondary']};
@@ -318,6 +318,9 @@ class ChartWidget(QWidget):
             ticks = [(i, tick_strings[i] if i < len(tick_strings) else "")
                     for i in range(len(tick_strings))]
             x_axis.setTicks([ticks])
+            
+            if len(dates) > 1:
+                self._plot_widget.setXRange(-0.5, len(dates) - 0.5)
 
     def refresh_theme(self, is_dark: bool = True) -> None:
         """Refresh chart theme."""
