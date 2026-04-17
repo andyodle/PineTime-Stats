@@ -195,6 +195,10 @@ class DeviceScanWorker(QThread):
 class PineTimeSettings:
     """Handler for saving settings to PineTime via BLE FS."""
 
+    BLE_FS_SERVICE_UUID = uuid.UUID("0000febb-0000-1000-8000-00805f9b34fb")
+    BLE_FS_TRANSFER_UUID = uuid.UUID("adaf0200-4669-6c65-5472-616e73666572")
+    BLE_FS_VERSION_UUID = uuid.UUID("adaf0100-4669-6c65-5472-616e73666572")
+
     def __init__(self, ble_client: PineTimeBLEClient):
         """
         Initialize PineTime settings handler.
@@ -203,6 +207,30 @@ class PineTimeSettings:
             ble_client: PineTimeBLEClient instance for BLE communication.
         """
         self._ble_client = ble_client
+
+    async def _check_ble_fs_version(self, client) -> Optional[int]:
+        """Check BLE FS protocol version."""
+        try:
+            version_data = await client.read_gatt_char(self.BLE_FS_VERSION_UUID)
+            if version_data:
+                version = int.from_bytes(version_data[:4], 'little')
+                logger.info(f"BLE FS Protocol Version: {version}")
+                return version
+        except Exception as e:
+            logger.debug(f"Could not read BLE FS version: {e}")
+        return None
+
+    async def _check_firmware_version(self, client) -> Optional[str]:
+        """Check InfiniTime firmware version."""
+        try:
+            fw_data = await client.read_gatt_char(uuid.UUID("00002a26-0000-1000-8000-00805f9b34fb"))
+            if fw_data:
+                version = bytes(fw_data).decode('utf-8').strip('\x00')
+                logger.info(f"PineTime firmware: {version}")
+                return version
+        except Exception as e:
+            logger.debug(f"Could not read firmware version: {e}")
+        return None
 
     async def save_to_device(self, device_address: str, settings: dict) -> tuple[bool, str]:
         """
@@ -224,7 +252,7 @@ class PineTimeSettings:
             services = await client.get_services()
             has_ble_fs = False
             for service in services:
-                if str(service.uuid).lower() == "0000febb-0000-1000-8000-00805f9b34fb":
+                if str(service.uuid).lower() == str(self.BLE_FS_SERVICE_UUID).lower():
                     has_ble_fs = True
                     break
 
@@ -237,6 +265,9 @@ class PineTimeSettings:
                     f"Time format: {time_format}\n"
                     f"Sync time: {'On' if sync_time else 'Off'}"
                 )
+
+            ble_fs_version = await self._check_ble_fs_version(client)
+            fw_version = await self._check_firmware_version(client)
 
             time_format = settings.get('time_format', '24h')
             sync_time_enabled = 1 if settings.get('sync_time_enabled', True) else 0
@@ -260,18 +291,32 @@ class PineTimeSettings:
             header.extend(struct.pack('<I', len(settings_bytes)))
 
             full_header = header + file_path.encode('utf-8')
-            await client.write_gatt_char(BLE_FS_TRANSFER_UUID, full_header, response=True)
+            await client.write_gatt_char(self.BLE_FS_TRANSFER_UUID, full_header, response=True)
 
-            await client.write_gatt_char(BLE_FS_TRANSFER_UUID, settings_bytes, response=True)
+            await client.write_gatt_char(self.BLE_FS_TRANSFER_UUID, settings_bytes, response=True)
 
             await client.disconnect()
             sync_on = "On" if settings.get('sync_time_enabled', True) else "Off"
             return True, f"Settings saved to PineTime!\nTime format: {time_format}\nSync time: {sync_on}"
 
         except Exception as e:
-            logger.error(f"Failed to save settings: {e}")
+            error_str = str(e)
             time_format = settings.get('time_format', '24h')
             sync_on = "On" if settings.get('sync_time_enabled', True) else "Off"
+
+            if "INSUFFICIENT_AUTHORIZATION" in error_str or "8" in error_str:
+                await client.disconnect()
+                logger.warning("BLE FS access is disabled on PineTime!")
+                return False, (
+                    f"BLE FS access is disabled on PineTime!\n\n"
+                    f"Enable File Transfer on your watch:\n"
+                    f"Settings > Over-the-air > File Transfer > Enable\n\n"
+                    f"Manual settings:\n"
+                    f"Time format: {time_format}\n"
+                    f"Sync time: {sync_on}"
+                )
+
+            logger.error(f"Failed to save settings: {e}")
             return False, (
                 f"Could not save to watch.\n"
                 f"Please set manually:\n"
