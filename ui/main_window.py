@@ -214,13 +214,18 @@ class ChartWidget(QWidget):
         self._plot_widget = pg.PlotWidget()
         self._plot_widget.setBackground(QColor(self._theme["surface"]))
         self._plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        self._plot_widget.setMinimumHeight(150)
 
-        self._steps_line = self._plot_widget.plot(
-            [], [], pen=pg.mkPen(color=self._theme["chart_steps"], width=2),
+        self._steps_bar = pg.BarGraphItem(
+            x=[], height=[], width=0.6,
+            brush=self._theme["chart_steps"],
             name="Steps"
         )
+        self._plot_widget.addItem(self._steps_bar)
+
         self._hr_line = self._plot_widget.plot(
             [], [], pen=pg.mkPen(color=self._theme["chart_hr"], width=2),
+            symbol='s', symbolSize=8, symbolBrush=self._theme["chart_hr"],
             name="Heart Rate"
         )
 
@@ -261,6 +266,7 @@ class ChartWidget(QWidget):
         }
         self._current_filter = filter_map.get(text, "7d")
         self._title_label.setText(f"History ({text})")
+        logger.debug(f"Filter changed to: {self._current_filter}")
         self.filter_changed.emit(self._current_filter)
 
     def get_filter(self) -> str:
@@ -273,20 +279,20 @@ class ChartWidget(QWidget):
 
         Args:
             dates: List of date strings (YYYY-MM-DD).
-            steps: List of step counts.
-            heart_rates: List of average heart rates.
+            steps: List of step counts (one per day).
+            heart_rates: List of average heart rates per day.
         """
+        logger.debug(f"ChartWidget.update_data: dates={dates}, steps={steps}, heart_rates={heart_rates}")
         if not dates:
             self._no_data_label.show()
-            self._steps_line.setData([], [])
+            self._steps_bar.setData(x=[], height=[])
             self._hr_line.setData([], [])
             return
 
         self._no_data_label.hide()
 
         x_values = list(range(len(dates)))
-
-        self._steps_line.setData(x_values, steps)
+        self._steps_bar.setData(x=x_values, height=steps)
 
         hr_normalized = []
         max_steps = max(steps) if steps else 1
@@ -468,11 +474,13 @@ class MainWindow(QMainWindow):
         days = days_map.get(filter_value, 7)
 
         stats = self._db.get_daily_stats(days=days)
+        logger.info(f"_update_chart: filter={filter_value}, days={days}, stats_count={len(stats)}")
         if stats:
             dates = [s.date for s in reversed(stats)]
             steps = [s.steps for s in reversed(stats)]
             hr_avg = [int(s.heart_rate_avg) if s.heart_rate_avg > 0 else 0
                      for s in reversed(stats)]
+            logger.info(f"_update_chart: dates={dates}, steps={steps}")
             self._chart_widget.update_data(dates, steps, hr_avg)
 
     def _on_chart_filter_changed(self, filter_value: str) -> None:
