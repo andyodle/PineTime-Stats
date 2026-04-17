@@ -249,7 +249,7 @@ class PineTimeSettings:
             client = BleakClient(device_address, timeout=10)
             await client.connect()
 
-            services = await client.get_services()
+            services = client.services
             has_ble_fs = False
             for service in services:
                 if str(service.uuid).lower() == str(self.BLE_FS_SERVICE_UUID).lower():
