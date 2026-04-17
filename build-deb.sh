@@ -21,9 +21,7 @@ mkdir -p "$PKG_DIR/usr/share/metainfo"
 mkdir -p "$PKG_DIR/usr/share/icons/hicolor/48x48/apps"
 cp -r main.py ble db ui "$PKG_DIR/usr/share/pinetime-stats/"
 cp pinetime-stats.desktop "$PKG_DIR/usr/share/applications/"
-if [ -d "icons" ]; then
-    cp icons/*.png "$PKG_DIR/usr/share/icons/hicolor/48x48/apps/" 2>/dev/null || true
-fi
+cp icons/AppIcon.png "$PKG_DIR/usr/share/icons/hicolor/48x48/apps/pinetime-stats.png"
 ln -sf /usr/share/pinetime-stats/main.py "$PKG_DIR/usr/bin/pinetime-stats"
 
 echo "Creating control file..."
