@@ -31,7 +31,7 @@ Version: 1.0
 Section: utils
 Priority: optional
 Architecture: all
-Depends: python3, python3-pyqt6, bluez
+Depends: python3, python3-pyqt6, python3-pyqtgraph, python3-bleak, bluez
 Maintainer: PineTime Stats Team
 Description: PineTime Step Tracking Dashboard
  A desktop application for tracking steps and heart rate data

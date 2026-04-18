@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=PineTime Stats
 Comment=PineTime Step Tracking Dashboard
-Exec=python3 /usr/share/pinetime-stats/main.py
+Exec=env PYTHONPATH=/usr/share/pinetime-stats python3 /usr/share/pinetime-stats/main.py
 Icon=pinetime-stats
 Terminal=false
 Type=Application
