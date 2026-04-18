@@ -38,6 +38,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def get_default_db_path() -> Path:
+    """Get default database path using XDG-like location."""
+    data_dir = Path(os.path.expanduser("~/.local/share/pinetime-stats"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir / "pinetime_stats.db"
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -45,8 +52,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "-d", "--database",
-        default="pinetime_stats.db",
-        help="Path to SQLite database file (default: pinetime_stats.db)"
+        default=None,
+        help="Path to SQLite database file (default: ~/.local/share/pinetime-stats/pinetime_stats.db)"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -80,7 +87,10 @@ def main() -> int:
         logging.getLogger().setLevel(logging.DEBUG)
         logger.debug("Verbose logging enabled")
 
-    db_path = Path(args.database).absolute()
+    if args.database:
+        db_path = Path(args.database).absolute()
+    else:
+        db_path = get_default_db_path()
     logger.info(f"Database path: {db_path}")
 
     try:

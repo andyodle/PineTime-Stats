@@ -1,221 +1,160 @@
-# PineTime Step Tracking Dashboard
+# PineTime Stats
 
-A Python desktop application for tracking steps and heart rate data from the PineTime smartwatch running InfiniTime firmware.
+A desktop application for tracking steps and heart rate data from the PineTime smartwatch running InfiniTime firmware.
 
-## Summary
+## Features
 
-PineTime Step Tracking Dashboard is a PyQt6-based desktop application that connects to the PineTime smartwatch via Bluetooth Low Energy (BLE) and displays real-time step counting and heart rate monitoring with historical statistics. The application uses SQLite for local data persistence and provides a graphical interface with charts and detailed analytics.
+- **Step Tracking**: Sync and display daily step count from PineTime
+- **Heart Rate Monitoring**: View current heart rate readings
+- **Battery Level**: Monitor PineTime battery status
+- **Firmware Info**: Display firmware version
+- **Data History**: View step history charts (Day, 7 Days, Month, Year, All)
+- **System Tray**: Runs in background with system tray icon
+- **Auto-pairing**: Remembers paired PineTime device
 
-### Features
-- Real-time step and heart rate monitoring from PineTime smartwatch
-- Historical data visualization with charts
-- Daily statistics tracking
-- Configurable database paths for data storage
-- Support for dark and light themes
-- Verbose logging mode for debugging
-- Runs natively on Python 3.9+
+## Requirements
 
-### Requirements
+- PineTime with InfiniTime firmware (v1.7+ recommended)
+- Linux desktop with Bluetooth support
+- Python 3.9+
+- PyQt6
+- pyqtgraph
+- bleak (BLE client library)
 
-- Python 3.9 or higher
-- PineTime smartwatch with InfiniTime firmware (v1.7+ recommended)
-- Bluetooth adapter with BLE support
-- pip (Python package installer)
-
-### Dependencies
-
-- `bleak>=0.21.0` - Bluetooth Low Energy communication
-- `PyQt6>=6.5.0` - GUI framework
-- `pyqtgraph>=0.13.3` - Charting library (embedded in PyQt6)
-- SQLite3 - Built-in Python module for database storage
-
-## Building the Application
-
-### Prerequisites
-- Python 3.9+ installed on your system
-- A virtual environment (recommended)
-
-### Setup and Installation
-
-```bash
-# Clone or navigate to the project directory
-cd /path/to/PineTime/StatsApp
-
-# Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Test the application
-python main.py --help
-```
-
-## Running the Application
-
-### Basic Usage
-
-```bash
-python main.py
-```
-
-### Command Line Options
-
-| Option | Description | Example |
-|--------|-------------|---------|
-| `--db-paths PATH` | SQLite database file path | `--db-path steps.db` |
-| `--verbose` | Enable verbose logging | `--verbose` |
-| `--theme` | Display theme (dark/light) | `--theme dark` |
-
-### Running with Custom Configuration
-
-```bash
-# Single database path
-python main.py --db-paths /home/user/.pinetime/stats.db --theme dark --verbose
-
-# Multiple database paths
-python main.py --db-paths /data1.db --db-paths /data2.db
-```
-
-## Testing the Application
-
-### Automated Testing
-
-The application can be tested programmatically:
-
-```bash
-# Run unit tests (if test suite exists)
-python -m pytest tests/ -v
-
-# Test BLE connection
-python main.py --db-paths test.db --verbose
-```
-
-### Manual Testing Checklist
-
-1. **BLE Connection**: Verify the app can discover and connect to a PineTime smartwatch
-2. **Data Sync**: Confirm step and heart rate data is received and stored in the database
-3. **GUI Display**: Check that charts and statistics display correctly
-4. **Theme Switching**: Verify dark/light theme transitions work properly
-5. **Persistence**: Ensure data persists across application restarts
-
-### Debug Mode
-
-For troubleshooting, use verbose logging:
-
-```bash
-python main.py --db-paths /path/to/your.db --verbose
-```
-
-## Package Installation (DEB)
-
-### Generating DEB Package
-
-The project includes a build script to create a Debian package:
-
-```bash
-# Navigate to the project root
-cd /path/to/PineTime/StatsApp
-
-# Build the DEB package
-./build-deb.sh
-```
-
-This script will:
-1. Create a temporary package directory structure
-2. Copy all application files and dependencies
-3. Generate the Debian package in the `output/` directory
-
-### Installation from DEB Package
-
-```bash
-# Install the generated DEB package
-sudo dpkg -i output/pinetime-stats_1.0_amd64.deb
-
-# If dependency issues occur, fix with:
-apt-get install -f
-
-# Or update cache and reinstall
-sudo apt-get update
-sudo dpkg -i output/pinetime-stats_1.0_amd64.deb
-```
-
-### Automatic Package Creation with apt
-
-To create a proper `.deb` package with automatic installation:
-
-1. Install required build tools:
-```bash
-sudo apt-get update
-sudo apt-get install -y debhelper dh-make debhelper-compat debian-devscripts python3-virtualenv
-```
-
-2. Run the build script which creates the package in `output/`:
-```bash
-./build-deb.sh
-```
-
-3. Install using the standard DEB package manager:
-```bash
-sudo dpkg -i output/pinetime-stats_*.deb
-```
-
-### Verifying Installation
-
-```bash
-# Check installation
-dpkg -l | grep pinetime-stats
-
-# Check desktop file installation
-ls /usr/share/applications/pinetime-stats.desktop
-
-# Launch the application
-pinetime-stats
-```
-
-## Troubleshooting
-
-### BLE Connection Issues
-
-- Ensure Bluetooth is enabled and the PineTime is within range
-- Verify the firmware version on your PineTime (v1.7+ recommended)
-- Check that your Bluetooth adapter supports BLE
-
-### Permission Errors
-
-```bash
-# If permission errors occur during package installation
-sudo apt-get install -f
-sudo apt-get update
-```
-
-### Application Won't Start
-
-1. Check Python version: `python --version`
-2. Verify dependencies are installed: `pip install -r requirements.txt`
-3. Check the database file path is writable
-4. Run with `--verbose` flag for detailed error messages
 
 ## Project Structure
 
 ```
-PineTime/StatsApp/
+pinetime-stats/
 ├── main.py              # Application entry point
-├── requirements.txt     # Python dependencies
-├── build-deb.sh        # DEB package build script
-├── pinetime-stats.desktop  # Desktop launch file
-├── scratchpad.appdata.xml # AppStream metadata
-├── db/                 # Database module
-│   ├── repository.py   # Database operations
-│   └── schema.py       # Database schema definitions
-├── ui/                # UI module
-│   ├── main_window.py  # Main application window
-│   └── styles.py       # Theme styles
-└── ble/               # BLE client module
-    └── client.py       # PineTime BLE communication
+├── build-deb.sh         # DEB package builder
+├── pinetime-stats.desktop  # Desktop entry file
+├── ble/
+│   ├── client.py        # BLE communication
+│   ├── pine_time.py    # BLE workers
+│   └── constants.py    # BLE UUIDs
+├── db/
+│   ├── repository.py    # Database operations
+│   └── schema.py      # Database schema
+└── ui/
+    ├── main_window.py  # Main application window
+    ├── widgets.py    # Custom widgets
+    ├── dialogs.py    # Dialog windows
+    └── styles.py    # Theme styling
 ```
 
-## License
+## Build
 
-MIT License - See LICENSE file for details.
+Install Python dependencies:
+
+```bash
+pip install PyQt6 pyqtgraph bleak
+```
+
+Run the application:
+
+```bash
+PYTHONPATH=. python3 main.py
+```
+
+Or using the installed command:
+
+```bash
+pinetime-stats
+```
+
+## Development
+
+### Running Tests
+
+```bash
+pytest tests/
+```
+
+### Command Line Options
+
+```bash
+python main.py -h
+```
+
+Options:
+- `-d, --database PATH` - Database file path (default: pinetime_stats.db)
+- `-v, --verbose` - Enable verbose logging
+- `--dark` - Use dark theme (default)
+- `--light` - Use light theme
+
+## Building DEB Package
+
+Build the package:
+
+```bash
+./build-deb.sh
+```
+
+This creates `output/pinetime-stats-1.0.deb`.
+
+## Installing DEB Package
+
+### Option 1: Using dpkg
+
+```bash
+sudo dpkg -i output/pinetime-stats-1.0.deb
+sudo apt-get install -y -f  # Install missing dependencies
+```
+
+### Option 2: Using gdebi
+
+```bash
+sudo gdebi output/pinetime-stats-1.0.deb
+```
+
+### Option 3: Using apt
+
+```bash
+sudo apt install ./output/pinetime-stats-1.0.deb
+```
+
+## Uninstalling
+
+```bash
+sudo apt remove pinetime-stats
+```
+
+Or:
+
+```bash
+sudo dpkg -r pinetime-stats
+```
+
+## Usage
+
+1. **Launch the app** - Either from application menu or terminal
+2. **Pair device** - The app will prompt to scan for PineTime
+3. **Enable Bluetooth** on PineTime and set to companion mode
+4. **Sync data** - Click "Sync Now" or use tray menu
+5. **View stats** - Step count, heart rate, battery, and history charts on main window
+6. **Close window** - App minimizes to system tray (use Exit to quit)
+
+## Troubleshooting
+
+### App doesn't launch after installing .deb
+
+Install missing dependencies:
+
+```bash
+sudo apt install python3-pyqt6 python3-pyqtgraph python3-bleak bluez
+```
+
+### Bluetooth not working
+
+- Ensure Bluetooth is enabled: `sudo systemctl start bluetooth`
+- Check permissions: `sudo setcap cap_net_raw+eip $(which python3)`
+- Pair PineTime in system Bluetooth settings first
+
+### Database errors
+
+Delete the database file and restart:
+
+```bash
+rm ~/.local/share/pinetime-stats/pinetime_stats.db
+```
