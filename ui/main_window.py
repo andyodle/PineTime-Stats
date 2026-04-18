@@ -10,10 +10,11 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGridLayout, QLabel, QPushButton, QFrame, QStatusBar,
-    QMessageBox, QDialog, QComboBox,
+    QMessageBox, QDialog, QComboBox, QSystemTrayIcon, QMenu,
+    QApplication,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot, QThread
-from PyQt6.QtGui import QAction, QColor
+from PyQt6.QtGui import QAction, QColor, QIcon
 
 import pyqtgraph as pg
 
@@ -348,6 +349,7 @@ class MainWindow(QMainWindow):
 
         self._setup_ui()
         self._setup_menu()
+        self._setup_tray()
         self._load_initial_data()
         self._update_sync_timer()
 
@@ -433,7 +435,7 @@ class MainWindow(QMainWindow):
 
         quit_action = QAction("Quit", self)
         quit_action.setShortcut("Ctrl+Q")
-        quit_action.triggered.connect(self.close)
+        quit_action.triggered.connect(self._force_quit)
         file_menu.addAction(quit_action)
 
         settings_menu = menubar.addMenu("Settings")
@@ -448,6 +450,53 @@ class MainWindow(QMainWindow):
         about_action = QAction("About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+    def _setup_tray(self) -> None:
+        """Set up system tray icon."""
+        self._tray_icon = QSystemTrayIcon(self)
+
+        icon_path = "/usr/share/icons/hicolor/48x48/apps/pinetime-stats.png"
+        self._tray_icon.setIcon(QIcon(icon_path))
+        self._tray_icon.setToolTip("PineTime Dashboard")
+
+        tray_menu = QMenu(self)
+
+        show_action = QAction("Show Window", self)
+        show_action.triggered.connect(self.show)
+        show_action.triggered.connect(self.activateWindow)
+        tray_menu.addAction(show_action)
+
+        tray_menu.addSeparator()
+
+        sync_action = QAction("Sync Now", self)
+        sync_action.triggered.connect(self._on_sync_clicked)
+        tray_menu.addAction(sync_action)
+
+        tray_menu.addSeparator()
+
+        quit_action = QAction("Exit", self)
+        quit_action.triggered.connect(self._on_tray_exit)
+        tray_menu.addAction(quit_action)
+
+        self._tray_icon.setContextMenu(tray_menu)
+        self._tray_icon.activated.connect(self._on_tray_activated)
+        self._tray_icon.show()
+
+    def _on_tray_activated(self, reason) -> None:
+        """Handle tray icon activation."""
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.show()
+            self.activateWindow()
+
+    def _on_tray_exit(self) -> None:
+        """Handle tray exit menu action."""
+        self._cleanup_and_close()
+        QApplication.quit()
+
+    def _force_quit(self) -> None:
+        """Force quit from menu."""
+        self._cleanup_and_close()
+        QApplication.quit()
 
     def _load_initial_data(self) -> None:
         """Load initial data from database."""
@@ -701,7 +750,20 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event) -> None:
-        """Handle window close."""
+        """Handle window close - hide to tray."""
+        if self._tray_icon and self._tray_icon.isVisible():
+            event.ignore()
+            self.hide()
+        else:
+            self._cleanup_and_close()
+            event.accept()
+
+    def _cleanup_and_close(self) -> None:
+        """Clean up resources before closing."""
+        if self._tray_icon:
+            self._tray_icon.hide()
+            self._tray_icon = None
+
         if self._sync_worker is not None:
             self._sync_worker.stop()
             if self._sync_worker.isRunning():
@@ -717,5 +779,3 @@ class MainWindow(QMainWindow):
                 loop.close()
             except Exception as e:
                 logger.warning(f"Error disconnecting on close: {e}")
-
-        event.accept()
